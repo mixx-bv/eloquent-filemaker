@@ -225,6 +225,16 @@ class FMBaseBuilder extends Builder
         return $this;
     }
 
+    public function addNestedWhereQuery($query, $boolean = 'and')
+    {
+
+        if (count($query->wheres)) {
+            $this->wheres = array_merge($this->wheres, $query->wheres);
+        }
+
+        return $this;
+    }
+
     /**
      * Delete records from the database.
      *
