@@ -265,6 +265,10 @@ class FileMakerConnection extends Connection
             $query->limit = self::CRAZY_RECORDS_AMOUNT;
         }
 
+        $query = $this->parseNested($query);
+        if($query->from === 'ART_web'){
+           dd($query);
+        }
         // remove any empty arrays from wheres
         // an empty find is invalid
         $query->wheres = collect($query->wheres)->filter(function ($item) {
@@ -932,5 +936,38 @@ class FileMakerConnection extends Connection
     public function getPdo()
     {
         return null;
+    }
+
+    private function parseNested($query): FMBaseBuilder
+    {
+        $result = [];
+
+        //we stoppen bij het find dat de or find niet werkt.......
+        //of de end find... in ieder geval weten we niet goed wat we willen doen...
+        foreach($query->wheres as $key => $where){
+            if(isset($where['type']) and $where['type'] === 'Nested'){
+                if($where['boolean'] === 'and'){
+                    $newQuery = $this->parseNested($where['query']);
+                    if(isset($result[$key-1])){
+                        $result[$key-1] = array_merge($result[$key-1],$newQuery->wheres);
+                    } else {
+                        $result = array_merge($result,$newQuery->wheres[0] ?? $newQuery->wheres);
+                    }
+                } else{
+                    if(isset($result[$key])){
+                        $result[$key] = array_merge($result[$key],$newQuery->wheres);
+                    } else {
+                        if(!isset($newQuery->wheres[0])){
+                            dd($newQuery);
+                        }
+                        $result = array_merge($result,$newQuery->wheres[0] ?? $newQuery->wheres);
+                    }
+                }
+            } else {
+                $result[$key] = $where;
+            }
+        }
+        $query->wheres = $result;
+        return $query;
     }
 }
