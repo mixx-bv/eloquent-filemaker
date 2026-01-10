@@ -942,8 +942,16 @@ class FileMakerConnection extends Connection
     {
         $result = [];
 
-        //we stoppen bij het find dat de or find niet werkt.......
-        //of de end find... in ieder geval weten we niet goed wat we willen doen...
+        /*
+         * @todo: implement algorithm
+         * als een array nested is, en and -> apply to previous (can be multiple if previous was a nested or)
+         * als een array nested is, en or -> apply previous to these, and replace
+         *
+         */
+
+        if($query->from === 'ART_web'){
+            dd($query);
+        }
         foreach($query->wheres as $key => $where){
             if(isset($where['type']) and $where['type'] === 'Nested'){
                 if($where['boolean'] === 'and'){
