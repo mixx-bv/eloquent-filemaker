@@ -968,15 +968,27 @@ class FMBaseBuilder extends Builder
 
     /**
      * Add a where between statement to the query.
+     * FM range syntax: min...max (inclusive)
+     * NOT between is not natively supported in FM, so we omit the record.
      */
-    /*
     public function whereBetween($column, iterable $values, $boolean = 'and', $not = false)
     {
-        $this->where($column, null, $values[0] . '...' . $values[1], $boolean);
+        $values = array_values(is_array($values) ? $values : iterator_to_array($values));
+
+        if ($boolean === 'or') {
+            $this->addFindRequest();
+        }
+
+        if ($not) {
+            $this->omit();
+        }
+
+        $currentFind = $this->getCurrentFind();
+        $currentFind[$this->getMappedFieldName($column)] = $values[0] . '...' . $values[1];
+        $this->updateCurrentFind($currentFind);
 
         return $this;
     }
-    */
 
     /**
      * Set the FileMaker record modId for editing an existing record.

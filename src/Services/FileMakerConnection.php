@@ -285,8 +285,6 @@ class FileMakerConnection extends Connection
         $url = $this->getLayoutUrl() . '/_find';
 
         $postData = $this->buildPostDataFromQuery($query);
-        \Illuminate\Support\Facades\Log::debug('[FM DEBUG] wheres', ['wheres' => $query->wheres]);
-        \Illuminate\Support\Facades\Log::debug('[FM DEBUG] postData', ['postData' => $postData]);
         $response = $this->makeRequest('post', $url, $postData);
         return $response;
     }
