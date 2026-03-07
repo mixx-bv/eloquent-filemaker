@@ -252,7 +252,7 @@ class FileMakerConnection extends Connection
     }
 
     /**
-     * @param  FMEloquentBuilder  $query
+     * @param  FMBaseBuilder  $query
      * @return mixed
      *
      * @throws FileMakerDataApiException
@@ -265,10 +265,6 @@ class FileMakerConnection extends Connection
             $query->limit = self::CRAZY_RECORDS_AMOUNT;
         }
 
-        $query = $this->parseNested($query);
-        if($query->from === 'ART_web'){
-           dd($query);
-        }
         // remove any empty arrays from wheres
         // an empty find is invalid
         $query->wheres = collect($query->wheres)->filter(function ($item) {
@@ -289,9 +285,9 @@ class FileMakerConnection extends Connection
         $url = $this->getLayoutUrl() . '/_find';
 
         $postData = $this->buildPostDataFromQuery($query);
-
+        \Illuminate\Support\Facades\Log::debug('[FM DEBUG] wheres', ['wheres' => $query->wheres]);
+        \Illuminate\Support\Facades\Log::debug('[FM DEBUG] postData', ['postData' => $postData]);
         $response = $this->makeRequest('post', $url, $postData);
-
         return $response;
     }
 
@@ -805,7 +801,6 @@ class FileMakerConnection extends Connection
     protected function logFMQuery($method, $url, $params, $start)
     {
         $commandType = $this->getSqlCommandType($method, $url);
-
         // Clockwork specifically looks for the commandType as the first word in the "sql" string
         $sql = <<<DOC
                 {$commandType}
@@ -816,10 +811,14 @@ class FileMakerConnection extends Connection
         if (count($params) > 0) {
             $sql .= "\nData: " . json_encode($params, JSON_PRETTY_PRINT);
         }
+        try {
+            $bindings = collect(data_get($params, 'query', []))->flatMap(
+                fn (array $binding, $index) => collect($binding)->mapWithKeys(fn ($value, $key) => [$index . ': ' . $key => $value])
+            )->all();
+        } catch (\Error $e) {
+            $bindings = [];
+        }
 
-        $bindings = collect(data_get($params, 'query', []))->flatMap(
-            fn (array $binding, $index) => collect($binding)->mapWithKeys(fn ($value, $key) => [$index . ': ' . $key => $value])
-        )->all();
 
         $this->event(new QueryExecuted(
             $sql,
@@ -938,44 +937,4 @@ class FileMakerConnection extends Connection
         return null;
     }
 
-    private function parseNested($query): FMBaseBuilder
-    {
-        $result = [];
-
-        /*
-         * @todo: implement algorithm
-         * als een array nested is, en and -> apply to previous (can be multiple if previous was a nested or)
-         * als een array nested is, en or -> apply previous to these, and replace
-         *
-         */
-
-        if($query->from === 'ART_web'){
-            dd($query);
-        }
-        foreach($query->wheres as $key => $where){
-            if(isset($where['type']) and $where['type'] === 'Nested'){
-                if($where['boolean'] === 'and'){
-                    $newQuery = $this->parseNested($where['query']);
-                    if(isset($result[$key-1])){
-                        $result[$key-1] = array_merge($result[$key-1],$newQuery->wheres);
-                    } else {
-                        $result = array_merge($result,$newQuery->wheres[0] ?? $newQuery->wheres);
-                    }
-                } else{
-                    if(isset($result[$key])){
-                        $result[$key] = array_merge($result[$key],$newQuery->wheres);
-                    } else {
-                        if(!isset($newQuery->wheres[0])){
-                            dd($newQuery);
-                        }
-                        $result = array_merge($result,$newQuery->wheres[0] ?? $newQuery->wheres);
-                    }
-                }
-            } else {
-                $result[$key] = $where;
-            }
-        }
-        $query->wheres = $result;
-        return $query;
-    }
 }

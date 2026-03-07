@@ -137,7 +137,7 @@ class FMBaseBuilder extends Builder
      * @var string[]
      */
     public $operators = [
-        '=', '==', '≠', '!', '<', '>', '<=', '≤', '>=', '≥', '~',
+        '=', '==', '≠', 'like','!=', '!', '<', '>', '<=', '≤', '>=', '≥', '~',
     ];
 
     public $containerFieldName;
@@ -166,6 +166,7 @@ class FMBaseBuilder extends Builder
     /**
      * Add a basic where clause to the query.
      */
+
     public function where($column, $operator = null, $value = null, $boolean = 'and'): FMBaseBuilder
     {
         $shouldBeOmit = false;
@@ -202,15 +203,29 @@ class FMBaseBuilder extends Builder
             $value, $operator, func_num_args() === 2
         );
 
+        // FM uses '==' for exact match; remap Laravel's default '=' to '=='
+        // 'like' is handled by converting '%' to '*' for FM contains search
+        $fmOperator = match ($operator) {
+            '='    => '==',
+            'like' => '',
+            default => $operator,
+        };
+
+        $fmValue = $operator === 'like'
+            ? str_replace('%', '*', $value)
+            : $value;
+
         $currentFind = $this->getCurrentFind();
 
-        $currentFind[$this->getMappedFieldName($column)] = $operator . $value;
+        $currentFind[$this->getMappedFieldName($column)] = $fmOperator . $fmValue;
 
         // add the where clause KvP to the last item in the array of wheres
         $this->updateCurrentFind($currentFind);
 
         return $this;
     }
+
+
 
     protected function addArrayOfWheres($column, $boolean, $method = 'where')
     {
@@ -224,6 +239,7 @@ class FMBaseBuilder extends Builder
 
         return $this;
     }
+    
 
     /**
      * Delete records from the database.
@@ -484,7 +500,8 @@ class FMBaseBuilder extends Builder
      */
     public function get($columns = ['*'])
     {
-        $records = collect(Arr::get($this->getData(), 'response.data', []));
+        $response = $this->getData();
+        $records = collect(Arr::get($response, 'response.data', []));
 
         // filter to only requested columns
         if ($columns !== ['*']) {
@@ -889,12 +906,54 @@ class FMBaseBuilder extends Builder
      */
     public function whereNull($columns, $boolean = 'and', $not = false)
     {
-        if ($not) {
-            // where NOT null
-            $this->where($columns, null, '*', $boolean);
+        // FM: '=' finds empty fields, '*' finds non-empty fields
+        $fmValue = $not ? '*' : '=';
+
+        foreach (Arr::wrap($columns) as $column) {
+            if ($boolean === 'or') {
+                $this->addFindRequest();
+            }
+
+            $currentFind = $this->getCurrentFind();
+            $currentFind[$this->getMappedFieldName($column)] = $fmValue;
+            $this->updateCurrentFind($currentFind);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Add another query builder as a nested where to the query builder.
+     *
+     * In FileMaker terms:
+     * - AND nested: merge the nested find requests into the existing ones (cross-product)
+     * - OR nested: append the nested find requests as new separate find requests
+     */
+    public function addNestedWhereQuery($query, $boolean = 'and')
+    {
+        $nestedWheres = $query->wheres;
+
+        if (empty($nestedWheres)) {
+            return $this;
+        }
+
+        if ($boolean === 'or') {
+            // OR: each nested find request becomes a new independent find request
+            foreach ($nestedWheres as $nestedFind) {
+                $this->addFindRequest();
+                $this->updateCurrentFind($nestedFind);
+            }
         } else {
-            // where null
-            $this->where($columns, null, '=', $boolean);
+            // AND: cross-product — merge every existing find request with every nested find request
+            $existingWheres = $this->wheres ?: [[]];
+            $newWheres = [];
+            foreach ($existingWheres as $existing) {
+                foreach ($nestedWheres as $nestedFind) {
+                    $newWheres[] = array_merge($existing, $nestedFind);
+                }
+            }
+            $this->wheres = $newWheres;
+            $this->setFindRequestIndex(count($this->wheres) - 1);
         }
 
         return $this;
@@ -910,12 +969,14 @@ class FMBaseBuilder extends Builder
     /**
      * Add a where between statement to the query.
      */
+    /*
     public function whereBetween($column, iterable $values, $boolean = 'and', $not = false)
     {
         $this->where($column, null, $values[0] . '...' . $values[1], $boolean);
 
         return $this;
     }
+    */
 
     /**
      * Set the FileMaker record modId for editing an existing record.
@@ -1001,6 +1062,7 @@ class FMBaseBuilder extends Builder
      *
      * @throws \InvalidArgumentException
      */
+    /*
     public function prepareValueAndOperator($value, $operator, $useDefault = false)
     {
         if ($useDefault) {
@@ -1010,7 +1072,7 @@ class FMBaseBuilder extends Builder
         }
 
         return [$value, $operator];
-    }
+    }*/
 
     public function setGlobalFields(array $globals)
     {
@@ -1039,6 +1101,7 @@ class FMBaseBuilder extends Builder
             $operator = '=';
         }
 
+        //@todo: there are other date formats as well :)
         if ($value instanceof DateTimeInterface) {
             $value = $value->format('n/j/Y');
         }
@@ -1077,7 +1140,7 @@ class FMBaseBuilder extends Builder
     {
         return $this->count($columns);
     }
-
+    /*
     public function toRawSql(): string
     {
         $this->computeWhereIns();
@@ -1090,4 +1153,5 @@ class FMBaseBuilder extends Builder
 
         return $this->toRawSql();
     }
+    */
 }
