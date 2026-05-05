@@ -203,6 +203,24 @@ class FMBaseBuilder extends Builder
             $value, $operator, func_num_args() === 2
         );
 
+        // FM has no inline not-equal operator in the Data API: emulate it via a separate
+        // OMIT find request, then restore the previous find request index so that any
+        // subsequent where clauses (e.g. Filament's whereKey for bulk actions) keep
+        // attaching to the original find request.
+        if ($operator === '!=') {
+            $previousIndex = $this->currentFindRequestIndex;
+            $this->addFindRequest();
+            $this->omit();
+            $omitFind = $this->getCurrentFind();
+            $omitFind[$this->getMappedFieldName($column)] = '==' . $value;
+            $this->updateCurrentFind($omitFind);
+            if ($previousIndex !== -1) {
+                $this->setFindRequestIndex($previousIndex);
+            }
+
+            return $this;
+        }
+
         // FM uses '==' for exact match; remap Laravel's default '=' to '=='
         // 'like' is handled by converting '%' to '*' for FM contains search
         $fmOperator = match ($operator) {
